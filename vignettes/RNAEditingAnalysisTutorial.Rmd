@@ -10,7 +10,8 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment = "#>",
+  fig.width=9, fig.height=6
 )
 ```
 
@@ -203,7 +204,6 @@ dbCount <- table(db)
 dbCount
 donut(x = dbCount, clockwise = TRUE, outer.radius = 1, 
       main = "Number of Databases Reporting Editing Events")
-
 ```
 
 As we can see, the vast majority of our RNA editing events have previously been reported, which increases our confidence that these are real. 
@@ -226,8 +226,6 @@ hist(as.numeric(RNAEdDataQCed$Frequency),
      col = "grey")
 mtext("Distribution of RNA Editing Frequency Rates", 
       side=3, outer=TRUE, line=-3) 
-
-
 ```
 
 ## Global Editing Values by Sample 
@@ -332,7 +330,7 @@ out <- out[order(out$fdr), ]
 head(out)
 ```
 
-## Association between Case-Control Status and RNA Editing Ajusting for Covariates 
+## Association between Case-Control Status and RNA Editing Adjusting for Covariates 
 
 While it does not appear that coverage is strongly associated with frequency, we may still want to include coverage at each site as a covariate while testing for the association between case control status and frequency. 
 
@@ -374,10 +372,13 @@ RNAEdGenotypes
 
 However, we may want to restrict the comparisons we are making to only test for associations between SNPs and editing sites that are within the same gene, etc. To do this, we can supply our desired comparisons to the comparisons parameter. 
 
+```{r}
+head(RNAEdCombinations)
+```
+
 The comparisons parameter allows users to pre-define which combinations of rows in x and y should be tested.  Column names should match data set names provided in xName (or default xName values) and in yName if y is provided. Each row should include the respective rownames or row numbers from each dataset in x and y that should be tested together. 
 
 ```{r}
-head(RNAEdCombinations)
 out <- ModelMultiData(formula = y ~ x1 + age, 
                       x = RNAEdGenotypes, y = RNAEdDataQCed$Frequency, 
                       groups = RNAEdSampleInfo, comparisons = RNAEdCombinations)
