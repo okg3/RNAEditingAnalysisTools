@@ -1,0 +1,22 @@
+Package: RNAEditingAnalysisTools
+Title: Conduct Differential RNA Editing Analysis 
+Version: 0.1.0
+Authors@R: 
+    person(given = "Olivia",
+           family = "Gardner",
+           role = c("aut", "cre"),
+           email = "okg3@med.miami.edu")
+Description: This package provides tools to import RNA editing data from 
+    REDItools, conduct quality control and strand correction, get summary 
+    statistics, and conduct differential RNA Editing analysis. 
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.0.2
+Depends: 
+    MultiDataAnalysis,
+    data.table
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr

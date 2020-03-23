@@ -1,0 +1,387 @@
+---
+title: "RNAEditingAnalysisTutorial"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{RNAEditingAnalysisTutorial}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(RNAEditingAnalysisTools)
+```
+
+This package provides tools to import RNA editing data from REDItools, conduct quality control and strand correction, get summary statistics, and conduct differential RNA Editing analysis.
+
+# Merging Data from Multiple Files into One Data Set 
+
+REDItools and other RNA editing analysis tools typically report RNA editing rates by individual, with an output of one file per sample. Consequently, in order to analyze RNA editing at the population level or to do differential editing analyses, we first have to merge these files together. 
+
+We can merge individual RNA editing results using the MergeIndividualFiles function from the package, MultiDataAnalysis. The MergeIndividualFiles function reads in files containing data from individual samples and merges individual data into one dataset by variable or measurement. 
+
+For this example, we will use data that has been installed with the MultiDataAnalysis package in the extdata/ folder. You can also download these files directly from github: https://github.com/okg3/MultiDataAnalysis/tree/master/inst/extdata 
+
+We will be looking at example output from a REDItools Denovo analysis with 8 samples. 
+
+```{r}
+# set dirPath to extdata directory in package path 
+dirPath <- paste0(path.package("MultiDataAnalysis"), "/extdata/")
+```
+```{r}
+dirPath
+# Data is split into separate files by sample
+list.files(dirPath, pattern = ".txt.gz")
+```
+
+Let's load one file to look at values: 
+
+```{r}
+file1 <- data.table::fread(paste0(dirPath, "sample1.txt.gz"))
+head(file1)
+```
+
+In this data, the unique editing events are identified by the columns Region, Position, Reference, and Strand. 
+
+```{r}
+idCols <- c("Region", "Position", "Reference", "Strand")
+```
+
+The columns AllSubs, Coverage-q25, MeanQ, BaseCount[A,C,G,T], Frequency, and Pvalue all represent individual meansurements that are specific to this sample. In order to compare measurements across samples, we will want to combine all of the Frequency columns from different samples into one matrix, all Coverage columns into another matrix, etc. 
+
+```{r}
+IndVars <- c("AllSubs", "Coverage-q25", "MeanQ", "BaseCount[A,C,G,T]", 
+             "Frequency", "Pvalue")
+```
+
+The remaining columns are annotations of the unique editing events which we will want to keep in a separate annotation data.frame. 
+
+To combine these datasets, we will use the MergeIndividualFiles function: 
+
+```{r}
+RNAEdData <- MergeIndividualFiles(
+  fileDirectory = dirPath,
+  filePattern = ".txt.gz", 
+  indVars = IndVars,
+  IDcol = idCols,
+  na.strings = "-"
+)
+names(RNAEdData)
+```
+
+Our merged dataset is a list containing one Annotation data.frame and 6 matrices with individual sample values for the 6 variables defined in indVars. 
+
+```{r}
+head(RNAEdData$Annotation)
+
+head(RNAEdData$Frequency)
+```
+
+Each matrix has 8 columns names after the file names, after removing the pattern defined in filePattern. Matrix rownames match the id column in the Annotation data.frame. 
+
+# RNA Editing QC and Global Descriptors 
+
+## Strand Correction and Calculating Edited Reads 
+
+Once this data has been merged, we first want to check strand calling: 
+
+```{r}
+RNAEdDataQCed <- StrandCorrection(x = RNAEdData, genes = "RefSeq_gid")
+```
+
+We are also going to add a matrix with raw counts of edited reads for every site in each sample to be used later for global editing analyses: 
+
+```{r}
+RNAEdDataQCed <- GetEditedReads(RNAEdDataQCed)
+head(RNAEdDataQCed$EditedReads)
+```
+
+## Global Descriptors 
+
+Now that the data has been prepared, we can look at global descriptors including: 
+
+* Percent A>G substitutions versus other substitution types 
+* Genomic regions with editing 
+* Percent in Alu repeat regions 
+* Percent reported in one or more databases 
+* Overall frequency of editing 
+
+### Substitution Types 
+
+The vast majority of RNA editing events should be of the canonical A>G type and then the C>T type. While StrandCorrection above should have addresses most strand calling errors, we may also see a larger proportion of T>C and G>A substitutions. We get the proportions of each using the SubType column in our Annotation data.frame: 
+
+```{r}
+subtypeCounts <- table(RNAEdDataQCed$Annotation$SubType)
+subtypeCounts
+barplot(subtypeCounts, col = gg_color_hue(length(subtypeCounts)), 
+        main = "RNA Editing Substitution Types")
+```
+
+To visualize as a donut plot, let's reorder substitution types by count: 
+
+```{r}
+subtypeCounts <- subtypeCounts[order(subtypeCounts, decreasing = TRUE)]
+subtypeLabels <- names(subtypeCounts)
+subtypeLabels[-grep("AG|CT|TC|GA", subtypeLabels)] <- NA
+donut(subtypeCounts, labels = subtypeLabels, outer.radius = 1,
+      main = "RNA Editing Substitution Types")
+```
+
+
+Alternatively, to get substitution types from the AllSubs matrix without running strand correction, we can use the GetSubType function: 
+
+```{r}
+# Get consensus substitution type from AllSubs matrix 
+SubType <- GetSubType(RNAEdData$AllSubs)
+subtypeCounts <-table(SubType)
+subtypeCounts
+
+# Donut plot 
+subtypeCounts <- subtypeCounts[order(subtypeCounts, decreasing = TRUE)]
+subtypeLabels <- names(subtypeCounts)
+subtypeLabels[-grep("AG|CT|TC|GA", subtypeLabels)] <- NA
+donut(subtypeCounts, labels = subtypeLabels, outer.radius = 1,
+      main = "RNA Editing Substitution Types - No Strand Correction")
+```
+
+As you can see, the majority of editing events are about evenly split between AG and TC without strand correction. 
+
+### Genomic Regions with Editing 
+
+Most RNA editing events tend to be non-coding. To look at the genomic distribution of RNA editing events, we can use the GetGeneRegion function: 
+
+```{r}
+regions <- GetGeneRegion(RNAEdDataQCed$Annotation$RefSeq_feat)
+regionCounts <- table(regions)
+
+barplot(regionCounts, col = gg_color_hue(length(regionCounts)), 
+        main = "Genomic Distribution of RNA Editing Events ")
+```
+
+As we can see, the majority of RNA editing events fall in intronic regions, followed by the 3'UTR. 
+
+### Alu Repeat Regions 
+
+RNA editing events, especially A>G events, most frequently appear in Alu repeat regions. We can look at the distribution of RNA editing events in Alu and non-Alu repetitive elements using the GetAluRepeat function: 
+
+```{r}
+aluRepeats <- GetAluRepeat(RNAEdDataQCed$Annotation$RepMask_gid)
+aluCounts <- table(aluRepeats)
+aluCounts
+donut(aluCounts, main = "RNA Editing Events in Alu and Non-Alu Repeats")
+```
+
+As expected, about 88% of the RNA editing events are in Alu repeat regions. 
+
+We can also look specifically at A>G substitutions and find similar results: 
+
+```{r}
+aluRepeats <- GetAluRepeat(RNAEdDataQCed$Annotation$RepMask_gid[
+  RNAEdDataQCed$Annotation$SubType == "AG"
+])
+aluCounts <- table(aluRepeats)
+aluCounts
+donut(aluCounts, main = "A-to-I RNA Editing Events in Alu and Non-Alu Repeats")
+```
+
+### RNA Editing Databases 
+
+Finally, we may want to check what percent of our editing events are novel vs. previously reported in an RNA editing database such as RADAR, DARNED, or REDIportal. We can count how many databases report an editing event using the function CheckDatabase: 
+
+```{r}
+db <- CheckDatabase(RNAEdDataQCed$Annotation$RADAR_gid,
+                    RNAEdDataQCed$Annotation$DARNED_gid,
+                    RNAEdDataQCed$Annotation$REDIportal_gid)
+
+dbCount <- table(db)
+dbCount
+donut(x = dbCount, clockwise = TRUE, outer.radius = 1, 
+      main = "Number of Databases Reporting Editing Events")
+
+```
+
+As we can see, the vast majority of our RNA editing events have previously been reported, which increases our confidence that these are real. 
+
+### Frequency of Editing 
+
+Finally, we may want to look at the overall distribution of editing frequencies (e.g. what percent of reads mapping to a site have the edit). We can summarize this data using the SummarizeData function from the MultiDataAnalysis package and then plot: 
+
+```{r}
+freqSummary <- SummarizeData(as.numeric(RNAEdDataQCed$Frequency), na.rm = TRUE)
+round(freqSummary, 3)
+par(fig= c(0,1,0.5,0.95))
+boxplot(as.numeric(RNAEdDataQCed$Frequency), horizontal = TRUE, 
+        axes = FALSE)
+par(fig= c(0,1,0,0.8), new = TRUE)
+hist(as.numeric(RNAEdDataQCed$Frequency),
+     xlab = "Editing Frequency",
+     ylab = "Count", 
+     main = NULL,
+     col = "grey")
+mtext("Distribution of RNA Editing Frequency Rates", 
+      side=3, outer=TRUE, line=-3) 
+
+
+```
+
+## Global Editing Values by Sample 
+
+Now that we have checked the overall distribution of RNA editing events, let's look at global RNA Editing measures by individual. 
+
+For this, there are two main measures we are interested in: 
+
+* The proportion of edited reads over the total number of reads mapping to edited sites (proportion)
+* The total number of sites that are edited in that individual (count)
+
+If there are substantial differences in the quality of coverage, we may want to normalize the individual count by the total number of sites that are covered (coverage). 
+
+```{r}
+globalEd <- GlobalEditing(RNAEdDataQCed)
+globalEd
+```
+
+In this case, all edited sites have at least some editing in all of our samples, so we will use the proportion measure alone: 
+
+```{r}
+globalProp <- GlobalEditing(RNAEdDataQCed, type = "proportion")
+globalProp
+```
+
+
+We can then use this to test for differences in global editing proportion between groups: 
+
+```{r}
+RNAEdSampleInfo
+
+# Test if global editing proportion differs by batch 
+batch <- as.factor(RNAEdSampleInfo$batch)
+out <- lm(globalProp ~ batch)
+summary(out)$coefficients
+
+# Test if global editing proportion differs by case control status 
+status <- as.factor(RNAEdSampleInfo$status)
+out <- lm(globalProp ~ status)
+summary(out)$coefficients
+```
+
+We can see that global editing rates do not differ significantly by sequencing batch but are significantly lower in cases than in controls. 
+
+We can also use the GlobalEditing function to find proportions by substitution type or other column in the Annotation data.frame: 
+
+```{r}
+globalSub <- GlobalEditing(RNAEdDataQCed, type = "proportion", by = "SubType")
+globalSub
+
+globalAG <- globalSub["AG", ]
+out <- lm(globalAG ~ status)
+summary(out)$coefficients
+```
+
+To calculate overall editing by gene: 
+
+```{r}
+geneEd <- GlobalEditing(RNAEdDataQCed, type = "proportion", by = "RefSeq_gid")
+head(geneEd)
+```
+
+# Differential RNA Editing 
+
+To test for associations between RNA Editing and a trait at every edited site, we can use the ModelMultiData function from the MultiDataAnalysis package. The ModelMultiData function applies a regression model across all rows of one or more matrices with inputs from multiple data sets and returns the summary regression coefficients.
+
+## Association between RNA Editing at Each Site and Age  
+
+First, let's test if RNA Editing frequency at any site is associated with age using a linear model, adjusting for batch. To do this, we supply the RNA Editing Frequency matrix to x and the RNAEdSampleInfo data.frame to groups. Because we don't want to include status as a covariate, we will add that to the excludeVars parameter. 
+
+```{r}
+out <- ModelMultiData(x = RNAEdDataQCed$Frequency, groups = RNAEdSampleInfo,
+                      excludeVars = "status")
+out <- out[order(out$fdr), ]
+head(out)
+```
+
+By default, if no formula is provided, ModelMultiData will build a formula using the provided data. If groups is defined and y is not, then the left-hand variable defaults to the second column of groups after applying excludeVars and includeVars. The remaining columns in groups post-includsion/exclusion criteria are included as covariates in the model. We can also supply the formula directly, as seen below. 
+
+## Association between RNA Editing at Each Site and Case Control Status 
+
+While ModelMultiData applies a linear model by default, we can also test binary traits with a logistic regression by changing the FUN parameter to glm and supplying family = binomial(). Here, we are interested in testing for associations between RNA Editing Frequency and case-control status, so we supply the formula status ~ frequency and note that "frequency" refers to the rows of our x matrix (RNAEdDataQCed$Frequency) by setting xName. 
+
+```{r warning=FALSE}
+out <- ModelMultiData(formula = status ~ frequency, x = RNAEdDataQCed$Frequency,
+                      groups = RNAEdSampleInfo, xName = "frequency", 
+                      FUN = glm, family = binomial())
+
+out <- out[order(out$fdr), ]
+head(out)
+```
+
+## Association between RNA Editing and Coverage at Each Site 
+
+In addition to testing for associations with external traits using the groups parameter, we may want to test if the Frequency of RNA Editing tends to be strongly associated with Coverage at each site. In this case, we can supply the Coverage matrix to the y parameter. Because the supplied x matrix and y matrix both share the same the same rownames, ModelMultiData will by default pair rows with the same name and test for associations (if x and y do not have the same rownames, ModelMultiData will test all possible combinations unless comparisons parameter is supplied). 
+
+```{r}
+out <- ModelMultiData(x = RNAEdDataQCed$Frequency, 
+                      y = RNAEdDataQCed$`Coverage-q25`)
+
+out <- out[order(out$fdr), ]
+head(out)
+```
+
+## Association between Case-Control Status and RNA Editing Ajusting for Covariates 
+
+While it does not appear that coverage is strongly associated with frequency, we may still want to include coverage at each site as a covariate while testing for the association between case control status and frequency. 
+
+To do this, we can supply a list of matrices to the x parameter. If we don't supply xName, the names of the list items should correspond with the respective variables in the formula, in this case, frequency and coverage (otherwise, by default, x matrices will be named x1, x2,..., xn). Like the example above, this function will pair all rows in x1 and x2 that share the same name. This means that we can adjust the frequency of editing at every site by the coverage at those sites. 
+
+In addition, we may want to change the variable coefficients that are returned. By default, ModelMultiData returns model coefficients for variables in x. However, to include all coefficients (including the intercept), we change the returnVars parameter to "*". 
+
+
+```{r warning=FALSE}
+out <- ModelMultiData(formula = status ~ frequency + coverage + age, 
+                      x = list(frequency = RNAEdDataQCed$Frequency, 
+                               coverage = RNAEdDataQCed$`Coverage-q25`), 
+                      groups = RNAEdSampleInfo, FUN = glm, family = binomial(),
+                      returnVars = "*")
+out <- out[order(out$fdr), ]
+head(out)
+```
+
+## Association between RNA Editing and Age Stratified by Case-Control Status 
+
+So far, we have tested for associations between RNA editing and traits with cases and control combined, but we might want to conduct a stratified analysis to test for associations within each group. We can use the "by" parameter to conduct a stratified analysis, splitting data by one or more variables in groups. We supply a character vector specifying the names of the column or columns in groups that will be used to split data if stratified analysis desired. 
+
+```{r warning=FALSE}
+out <- ModelMultiData(formula = age ~ frequency + coverage + batch, 
+                      x = list(frequency = RNAEdDataQCed$Frequency, 
+                               coverage = RNAEdDataQCed$`Coverage-q25`), 
+                      groups = RNAEdSampleInfo, by = "status")
+out <- lapply(out, function(x) x[order(x$fdr), ])
+lapply(out, head)
+```
+
+## RNA Editing QTL Analysis 
+
+To conduct an RNA Editing QTL analysis, we can supply our RNA Editing frequency matrix to the y parameter and a genotypes matrix to x. 
+
+```{r}
+RNAEdGenotypes
+```
+
+However, we may want to restrict the comparisons we are making to only test for associations between SNPs and editing sites that are within the same gene, etc. To do this, we can supply our desired comparisons to the comparisons parameter. 
+
+The comparisons parameter allows users to pre-define which combinations of rows in x and y should be tested.  Column names should match data set names provided in xName (or default xName values) and in yName if y is provided. Each row should include the respective rownames or row numbers from each dataset in x and y that should be tested together. 
+
+```{r}
+head(RNAEdCombinations)
+out <- ModelMultiData(formula = y ~ x1 + age, 
+                      x = RNAEdGenotypes, y = RNAEdDataQCed$Frequency, 
+                      groups = RNAEdSampleInfo, comparisons = RNAEdCombinations)
+out <- out[order(out$fdr), ]
+head(out)
+```
+
