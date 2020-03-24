@@ -18,76 +18,76 @@ StrandCorrectionFuncs <- function(x){
   bcMats <- c("BaseCount[A,C,G,T]", "gBaseCount[A,C,G,T]")
   cMats <- c("AllSubs", "gAllSubs")
   pMats <- "Pvalue"
-  
+
   for(i in seq_len(nrow(wmMats))){
     if(wmMats[i,1] %in% names(x) & wmMats[i,2] %in% names(x)){
       combFuncs <- c(
-        combFuncs, 
+        combFuncs,
         paste0(
-          "x[[\"",wmMats[i,1],"\"]][annot$id == dID, j] <- weighted.mean(",
-          "x[[\"",wmMats[i,1],"\"]][annot$id == dID, j], ", 
-          "x[[\"",wmMats[i,2],"\"]][annot$id == dID, j], ",
+          "x[[\"",wmMats[i,1],"\"]][x[[1]]$id == dID, j] <- weighted.mean(",
+          "x[[\"",wmMats[i,1],"\"]][x[[1]]$id == dID, j], ",
+          "x[[\"",wmMats[i,2],"\"]][x[[1]]$id == dID, j], ",
           "na.rm = TRUE)"
         )
       )
     } else if (wmMats[i,1] %in% names(x)){
       combFuncs <- c(
-        combFuncs, 
+        combFuncs,
         paste0(
-          "x[[\"",wmMats[i,1],"\"]][annot$id == dID, j] <- mean(",
-          "x[[\"",wmMats[i,1],"\"]][annot$id == dID, j], na.rm = TRUE)"
+          "x[[\"",wmMats[i,1],"\"]][x[[1]]$id == dID, j] <- mean(",
+          "x[[\"",wmMats[i,1],"\"]][x[[1]]$id == dID, j], na.rm = TRUE)"
         )
       )
     }
   }
-  
+
   for(s in sMats){
     if(s %in% names(x)){
       combFuncs <- c(
-        combFuncs, 
+        combFuncs,
         paste0(
-          "x[[\"", s, "\"]][annot$id == dID, j] <- sum(",
-          "x[[\"", s, "\"]][annot$id == dID, j], na.rm = TRUE)"
+          "x[[\"", s, "\"]][x[[1]]$id == dID, j] <- sum(",
+          "x[[\"", s, "\"]][x[[1]]$id == dID, j], na.rm = TRUE)"
         )
       )
     }
   }
-  
+
   for(bc in bcMats){
     if(bc %in% names(x)){
       combFuncs <- c(
-        combFuncs, 
+        combFuncs,
         paste0(
-          "x[[\"", bc, "\"]][annot$id == dID, j] <- CombineBaseCounts(",
-          "x[[\"", bc, "\"]][annot$id == dID, j], na.rm = TRUE)"
+          "x[[\"", bc, "\"]][x[[1]]$id == dID, j] <- CombineBaseCounts(",
+          "x[[\"", bc, "\"]][x[[1]]$id == dID, j], na.rm = TRUE)"
         )
       )
     }
   }
-  
+
   for(c in cMats){
     if(c %in% names(x)){
       combFuncs <- c(
-        combFuncs, 
+        combFuncs,
         paste0(
-          "x[[\"", c, "\"]][annot$id == dID, j] <- coalesce(",
-          "x[[\"", c, "\"]][annot$id == dID, j])"
+          "x[[\"", c, "\"]][x[[1]]$id == dID, j] <- coalesce(",
+          "x[[\"", c, "\"]][x[[1]]$id == dID, j])"
         )
       )
     }
   }
-  
+
   for (p in pMats){
     if (p %in% names(x)){
       combFuncs <- c(
-        combFuncs, 
+        combFuncs,
         paste0(
-          "x[[\"", p, "\"]][annot$id == dID, j] <- FisherMethodPValue(",
-          "x[[\"", p, "\"]][annot$id == dID, j], na.rm = TRUE)"
+          "x[[\"", p, "\"]][x[[1]]$id == dID, j] <- FisherMethodPValue(",
+          "x[[\"", p, "\"]][x[[1]]$id == dID, j], na.rm = TRUE)"
         )
       )
     }
   }
-  
+
   return(combFuncs)
 }
